@@ -3,7 +3,11 @@ const { MongoClient } = require('mongodb');
 const cors = require('cors');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 const uri = "mongodb+srv://sber:123@cluster0.wvbm5rc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
@@ -62,24 +66,48 @@ async function run() {
 
     app.delete('/api/expenses/:id', async (req, res) => {
       try {
-        const id = Number(req.params.id);
+        const id = req.params.id;
         const userId = req.query.userId;
         
+        // Валидация параметров
         if (!userId) {
           return res.status(400).json({ error: 'User ID is required' });
         }
+        if (!id || id === 'undefined') {
+          return res.status(400).json({ error: 'Valid Task ID is required' });
+        }
 
-        const result = await collection.deleteOne({ id, userId });
+        // Преобразуем id в число (если нужно)
+        const numericId = isNaN(id) ? id : Number(id);
+
+        const result = await collection.deleteOne({ 
+          id: numericId, 
+          userId 
+        });
         
         if (result.deletedCount === 0) {
-          return res.status(404).json({ error: 'Expense not found' });
+          return res.status(404).json({ 
+            error: 'Expense not found',
+            details: `No expense found with id: ${numericId} for user: ${userId}`
+          });
         }
         
-        res.json({ success: true });
+        res.json({ 
+          success: true,
+          deletedId: numericId
+        });
       } catch (err) {
         console.error('Error deleting expense:', err);
-        res.status(500).json({ error: 'Failed to delete expense' });
+        res.status(500).json({ 
+          error: 'Failed to delete expense',
+          details: err.message 
+        });
       }
+    });
+
+    // Health check endpoint
+    app.get('/health', (req, res) => {
+      res.status(200).json({ status: 'OK' });
     });
 
     const PORT = process.env.PORT || 3001;
