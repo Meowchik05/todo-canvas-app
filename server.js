@@ -3,11 +3,7 @@ const { MongoClient } = require('mongodb');
 const cors = require('cors');
 
 const app = express();
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+app.use(cors());
 app.use(express.json());
 
 const uri = "mongodb+srv://sber:123@cluster0.wvbm5rc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
@@ -66,48 +62,49 @@ async function run() {
 
     app.delete('/api/expenses/:id', async (req, res) => {
       try {
-        const id = req.params.id;
-        const userId = req.query.userId;
-        
-        // Валидация параметров
-        if (!userId) {
-          return res.status(400).json({ error: 'User ID is required' });
-        }
-        if (!id || id === 'undefined') {
-          return res.status(400).json({ error: 'Valid Task ID is required' });
-        }
-
-        // Преобразуем id в число (если нужно)
-        const numericId = isNaN(id) ? id : Number(id);
-
-        const result = await collection.deleteOne({ 
-          id: numericId, 
-          userId 
-        });
-        
-        if (result.deletedCount === 0) {
-          return res.status(404).json({ 
-            error: 'Expense not found',
-            details: `No expense found with id: ${numericId} for user: ${userId}`
+        const { id } = req.params;
+        const { userId } = req.query;
+    
+        // Жёсткая валидация параметров
+        if (!userId || !id || id === 'undefined') {
+          return res.status(400).json({ 
+            error: 'Invalid request',
+            details: `Received: id=${id}, userId=${userId}`
           });
         }
-        
+    
+        // Ищем документ независимо от типа ID
+        const document = await collection.findOne({
+          $or: [
+            { id: Number(id) }, // Проверяем как число
+            { id: id }          // Проверяем как строку
+          ],
+          userId
+        });
+    
+        if (!document) {
+          return res.status(404).json({
+            error: 'Document not found',
+            details: `No match for id=${id} (userId=${userId})`
+          });
+        }
+    
+        // Удаляем по _id из MongoDB для гарантии
+        const result = await collection.deleteOne({ 
+          _id: document._id 
+        });
+    
         res.json({ 
           success: true,
-          deletedId: numericId
+          deletedId: document.id
         });
       } catch (err) {
-        console.error('Error deleting expense:', err);
+        console.error('DELETE Error:', err);
         res.status(500).json({ 
-          error: 'Failed to delete expense',
+          error: 'Database operation failed',
           details: err.message 
         });
       }
-    });
-
-    // Health check endpoint
-    app.get('/health', (req, res) => {
-      res.status(200).json({ status: 'OK' });
     });
 
     const PORT = process.env.PORT || 3001;
