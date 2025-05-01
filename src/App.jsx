@@ -85,7 +85,7 @@ export class App extends React.Component {
     };
 
     try {
-      const response = await axios.post('http://localhost:3001/api/expenses', newTask);
+      const response = await axios.post('https://servachello.onrender.com/api/expenses', newTask);
       this.setState(prevState => ({
         tasks: [...prevState.tasks, response.data]
       }));
@@ -96,18 +96,30 @@ export class App extends React.Component {
   };
 
   handleDeleteTask = async (taskId) => {
+    // Жёсткая проверка ID
+    if (!taskId || taskId === 'undefined') {
+      alert('Ошибка: некорректный ID задачи');
+      return;
+    }
+  
     try {
-      await axios.delete(`http://localhost:3001/api/expenses/${taskId}`);
-      this.setState(prevState => ({
-        tasks: prevState.tasks.filter(task => task.id !== taskId),
-        selectedTaskId: null
-      }));
+      const response = await axios.delete(
+        `https://servachello.onrender.com/api/expenses/${taskId}`,
+        { params: { userId: this.userId } }
+      );
+  
+      if (response.data.success) {
+        this.setState(prevState => ({
+          tasks: prevState.tasks.filter(task => task.id !== taskId),
+          selectedTaskId: null
+        }));
+      }
     } catch (error) {
-      console.error('Ошибка при удалении задачи:', error);
-      this.setState({ assistantError: 'Не удалось удалить задачу' });
+      console.error('Delete Error:', error.response?.data || error.message);
+      alert(`Ошибка удаления: ${error.response?.data?.error || 'Unknown error'}`);
     }
   };
-
+  
   handleSelectTask = (taskId) => {
     this.setState({ selectedTaskId: taskId });
   };
@@ -123,30 +135,24 @@ export class App extends React.Component {
   };
 
   async componentDidMount() {
-    this._isMounted = true;
-    this.setState({ isLoading: true });
-
     try {
-      // Инициализация ассистента
-      this.assistant = initializeAssistant(() => this.getStateForAssistant());
-      this.setupAssistant();
-
-      const response = await axios.get(`http://localhost:3001/api/expenses?userId=${this.userId}`);
+      const response = await axios.get('https://servachello.onrender.com/api/expenses', {
+        params: { userId: this.userId },
+        headers: {
+          'Cache-Control': 'no-cache' // Отключаем кэширование
+        }
+      });
       
-      if (this._isMounted) {
-        this.setState({ 
-          tasks: response.data,
-          isLoading: false
-        });
-      }
+      this.setState({ 
+        tasks: response.data || [],
+        isLoading: false 
+      });
     } catch (error) {
-      console.error('Ошибка при загрузке:', error);
-      if (this._isMounted) {
-        this.setState({ 
-          assistantError: 'Ошибка при загрузке данных',
-          isLoading: false
-        });
-      }
+      console.error('Load Error:', error.response?.data || error.message);
+      this.setState({ 
+        assistantError: 'Ошибка загрузки данных',
+        isLoading: false
+      });
     }
   }
 
